@@ -1,0 +1,35 @@
+# Create Jenkins directory with root permissions
+- name: Create Jenkins directory
+  become: true
+  file:
+    path: /opt/jenkins
+    state: directory
+    mode: '0755'
+
+# Download Jenkins WAR using Ansible (not script)
+- name: Download Jenkins WAR
+  become: true
+  get_url:
+    url: https://get.jenkins.io/war-stable/2.452.2/jenkins.war
+    dest: /opt/jenkins/jenkins.war
+    mode: '0755'
+
+# Install Jenkins systemd service
+- name: Install Jenkins service file
+  become: true
+  template:
+    src: jenkins.service.j2
+    dest: /etc/systemd/system/jenkins.service
+
+# Reload systemd
+- name: Reload systemd
+  become: true
+  command: systemctl daemon-reload
+
+# Enable/start Jenkins
+- name: Start Jenkins
+  become: true
+  systemd:
+    name: jenkins
+    enabled: yes
+    state: started

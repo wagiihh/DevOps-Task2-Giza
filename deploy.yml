@@ -1,0 +1,52 @@
+- hosts: servers
+  become: false
+  gather_facts: false
+
+  tasks:
+
+    # ------------------------------------
+    # Copy ServletInitializer template
+    # ------------------------------------
+    - name: Copy ServletInitializer template
+      copy:
+        src: templates/ServletInitializer.java
+        dest: /home/wagih/templates/ServletInitializer.java
+        mode: '0644'
+
+    # ------------------------------------
+    # Build PetClinic WAR
+    # ------------------------------------
+    - name: Build PetClinic WAR
+      script: scripts/build_petclinic.sh
+      args:
+        chdir: /home/wagih/task2
+        executable: /bin/bash
+      environment:
+        JAVA_HOME: "/home/wagih/java/jdk-25.0.1"
+        PATH: "/home/wagih/java/jdk-25.0.1/bin:{{ ansible_env.PATH }}"
+
+    # ------------------------------------
+    # Deploy WAR to Tomcat (portable mode)
+    # ------------------------------------
+    - name: Deploy WAR to Tomcat
+      copy:
+        src: "/home/{{ ansible_user }}/.ansible/tmp/builds/petclinic.war"
+        dest: "/home/{{ ansible_user }}/tomcat/webapps/petclinic.war"
+        mode: "0644"
+        remote_src: true
+
+    - name: Pause for Tomcat to deploy
+      pause:
+        seconds: 10
+
+    # ------------------------------------
+    # Sanity Check
+    # ------------------------------------
+    - name: Sanity Check PetClinic
+      uri:
+        url: "http://127.0.0.1:9090/petclinic/"
+        return_content: yes
+      register: sanity
+
+    - debug:
+        var: sanity.status

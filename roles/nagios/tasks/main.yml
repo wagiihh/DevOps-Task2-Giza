@@ -1,0 +1,49 @@
+- name: Create Nagios directory
+  file:
+    path: /home/{{ ansible_user }}/nagios
+    state: directory
+
+- name: Download Nagios portable tarball
+  get_url:
+    url: "https://assets.nagios.com/downloads/nagioscore/releases/nagios-4.4.6.tar.gz"
+    dest: /home/{{ ansible_user }}/nagios/nagios.tar.gz
+
+- name: Extract Nagios
+  unarchive:
+    src: /home/{{ ansible_user }}/nagios/nagios.tar.gz
+    dest: /home/{{ ansible_user }}/nagios
+    remote_src: yes
+
+- name: Standardize Nagios folder name
+  command: mv /home/{{ ansible_user }}/nagios/nagios-4.4.6 /home/{{ ansible_user }}/nagios/core
+  args:
+    creates: /home/{{ ansible_user }}/nagios/core
+
+- name: Create Tomcat check script
+  copy:
+    dest: /home/{{ ansible_user }}/nagios/check_tomcat.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      PORT=9090
+      timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/$PORT" 2>/dev/null
+      if [ $? -eq 0 ]; then
+          echo "OK - Tomcat running on port $PORT"
+          exit 0
+      else
+          echo "CRITICAL - Tomcat is NOT running!"
+          exit 2
+      fi
+
+- name: Create Nagios run script
+  copy:
+    dest: /home/{{ ansible_user }}/nagios/run_nagios.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      echo "===== Nagios Check Runner ====="
+      echo "Running Tomcat Monitoring Check..."
+      /home/{{ ansible_user }}/nagios/check_tomcat.sh
+
+- name: Execute Nagios run script (Portable Mode)
+  command: /home/{{ ansible_user }}/nagios/run_nagios.sh

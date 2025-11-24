@@ -1,0 +1,3 @@
+[servers]
+app01 ansible_host=127.0.0.1 ansible_user=wagih ansible_ssh_pass=wigo123 ansible_become_pass=wigo123
+

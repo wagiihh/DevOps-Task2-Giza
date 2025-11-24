@@ -1,0 +1,96 @@
+---
+# ============================================================
+# TOMCAT 10.1 PORTABLE INSTALLATION (NO ROOT, NO APT)
+# Supports Jakarta EE 10 (required for Spring Boot 3/4)
+# ============================================================
+
+# ------------------------------------------------------------
+# Create Tomcat directory under home
+# ------------------------------------------------------------
+- name: Create Tomcat directory under home
+  file:
+    path: "/home/{{ ansible_user }}/tomcat"
+    state: directory
+
+# ------------------------------------------------------------
+# Download Tomcat 10.1.x archive
+# ------------------------------------------------------------
+- name: Download Tomcat 10.1.33 archive
+  get_url:
+    url: "https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.33/bin/apache-tomcat-10.1.33.tar.gz"
+    dest: "/home/{{ ansible_user }}/tomcat/tomcat.tar.gz"
+
+# ------------------------------------------------------------
+# Extract Tomcat (portable mode)
+# ------------------------------------------------------------
+- name: Extract Tomcat archive
+  unarchive:
+    src: "/home/{{ ansible_user }}/tomcat/tomcat.tar.gz"
+    dest: "/home/{{ ansible_user }}/tomcat"
+    remote_src: yes
+    extra_opts: ["--strip-components=1"]
+
+# ------------------------------------------------------------
+# Make Tomcat scripts executable
+# ------------------------------------------------------------
+- name: Make Tomcat startup scripts executable
+  file:
+    path: "{{ item }}"
+    mode: '0755'
+  loop:
+    - "/home/{{ ansible_user }}/tomcat/bin/startup.sh"
+    - "/home/{{ ansible_user }}/tomcat/bin/shutdown.sh"
+
+# ------------------------------------------------------------
+# Change Tomcat server port to 9090 (assignment requirement)
+# ------------------------------------------------------------
+- name: Change Tomcat server port to 9090
+  replace:
+    path: "/home/{{ ansible_user }}/tomcat/conf/server.xml"
+    regexp: 'port="8080"'
+    replace: 'port="9090"'
+
+# ------------------------------------------------------------
+# Enable Tomcat Manager GUI
+# ------------------------------------------------------------
+- name: Create tomcat-users.xml with admin user
+  copy:
+    dest: "/home/{{ ansible_user }}/tomcat/conf/tomcat-users.xml"
+    mode: '0644'
+    content: |
+      <tomcat-users>
+          <role rolename="manager-gui"/>
+          <role rolename="manager-script"/>
+          <user username="admin" password="admin123" roles="manager-gui,manager-script"/>
+      </tomcat-users>
+
+# ------------------------------------------------------------
+# Remove Manager-IP restrictions (allow access)
+# ------------------------------------------------------------
+- name: Remove default Valve restrictions in manager/context.xml
+  replace:
+    path: "/home/{{ ansible_user }}/tomcat/webapps/manager/META-INF/context.xml"
+    regexp: '(<Valve.*)?'
+    replace: ''
+
+# ------------------------------------------------------------
+# Use JDK 21 (Tomcat 10.1 supports Java 17+ and Java 21)
+# ------------------------------------------------------------
+- name: Create setenv.sh to force correct JAVA_HOME
+  copy:
+    dest: "/home/{{ ansible_user }}/tomcat/bin/setenv.sh"
+    mode: '0755'
+    content: |
+      export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
+      export PATH=$JAVA_HOME/bin:$PATH
+
+# ------------------------------------------------------------
+# Start Tomcat using correct Java
+# ------------------------------------------------------------
+#- name: Start Tomcat using Java 21
+ # shell: |
+  #  export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
+ #   export PATH=$JAVA_HOME/bin:$PATH
+#    /home/{{ ansible_user }}/tomcat/bin/startup.sh
+- name: Start Tomcat
+  shell: "/home/{{ ansible_user }}/tomcat/bin/startup.sh"
