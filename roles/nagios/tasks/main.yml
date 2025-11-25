@@ -19,6 +19,18 @@
   args:
     creates: /home/{{ ansible_user }}/nagios/core
 
+
+# ============================
+# 🔥 FIX ADDED HERE
+# ============================
+- name: Wait 12 seconds for Tomcat before Nagios checks
+  pause:
+    seconds: 12
+
+
+# ============================
+# Tomcat Port Check Script
+# ============================
 - name: Create Tomcat check script
   copy:
     dest: /home/{{ ansible_user }}/nagios/check_tomcat.sh

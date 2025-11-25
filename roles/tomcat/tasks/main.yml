@@ -1,11 +1,11 @@
 ---
 # ============================================================
-# TOMCAT 10.1 PORTABLE INSTALLATION (NO ROOT, NO APT)
-# Supports Jakarta EE 10 (required for Spring Boot 3/4)
+# TOMCAT 11 PORTABLE INSTALLATION (NO ROOT)
+# Uses Java 25 (via setenv.sh)
 # ============================================================
 
 # ------------------------------------------------------------
-# Create Tomcat directory under home
+# Create Tomcat directory
 # ------------------------------------------------------------
 - name: Create Tomcat directory under home
   file:
@@ -13,15 +13,15 @@
     state: directory
 
 # ------------------------------------------------------------
-# Download Tomcat 10.1.x archive
+# Download Tomcat 11.0.1
 # ------------------------------------------------------------
-- name: Download Tomcat 10.1.33 archive
+- name: Download Tomcat 11.0.1 archive
   get_url:
-    url: "https://archive.apache.org/dist/tomcat/tomcat-10/v10.1.33/bin/apache-tomcat-10.1.33.tar.gz"
+    url: "https://archive.apache.org/dist/tomcat/tomcat-11/v11.0.1/bin/apache-tomcat-11.0.1.tar.gz"
     dest: "/home/{{ ansible_user }}/tomcat/tomcat.tar.gz"
 
 # ------------------------------------------------------------
-# Extract Tomcat (portable mode)
+# Extract Tomcat (Portable)
 # ------------------------------------------------------------
 - name: Extract Tomcat archive
   unarchive:
@@ -42,7 +42,7 @@
     - "/home/{{ ansible_user }}/tomcat/bin/shutdown.sh"
 
 # ------------------------------------------------------------
-# Change Tomcat server port to 9090 (assignment requirement)
+# Change Tomcat HTTP port → 9090
 # ------------------------------------------------------------
 - name: Change Tomcat server port to 9090
   replace:
@@ -51,7 +51,16 @@
     replace: 'port="9090"'
 
 # ------------------------------------------------------------
-# Enable Tomcat Manager GUI
+# Enable WAR deployment (Tomcat 11 requires this)
+# ------------------------------------------------------------
+- name: Enable autoDeploy/unpackWARs/deployOnStartup
+  replace:
+    path: "/home/{{ ansible_user }}/tomcat/conf/server.xml"
+    regexp: '<Host name="localhost" appBase="webapps".*>'
+    replace: '<Host name="localhost" appBase="webapps" unpackWARs="true" autoDeploy="true" deployOnStartup="true">'
+
+# ------------------------------------------------------------
+# Enable Manager GUI
 # ------------------------------------------------------------
 - name: Create tomcat-users.xml with admin user
   copy:
@@ -65,7 +74,7 @@
       </tomcat-users>
 
 # ------------------------------------------------------------
-# Remove Manager-IP restrictions (allow access)
+# Disable manager IP restrictions
 # ------------------------------------------------------------
 - name: Remove default Valve restrictions in manager/context.xml
   replace:
@@ -74,23 +83,38 @@
     replace: ''
 
 # ------------------------------------------------------------
-# Use JDK 21 (Tomcat 10.1 supports Java 17+ and Java 21)
+# Use Java 25 for Tomcat (CRITICAL)
 # ------------------------------------------------------------
-- name: Create setenv.sh to force correct JAVA_HOME
+- name: Create setenv.sh to force JAVA_HOME=Java25
   copy:
     dest: "/home/{{ ansible_user }}/tomcat/bin/setenv.sh"
     mode: '0755'
     content: |
-      export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
+      echo "[SETENV] Using JAVA_HOME=/home/{{ ansible_user }}/java/jdk-25.0.1"
+      export JAVA_HOME=/home/{{ ansible_user }}/java/jdk-25.0.1
       export PATH=$JAVA_HOME/bin:$PATH
 
 # ------------------------------------------------------------
-# Start Tomcat using correct Java
+# Stop Tomcat (if running)
 # ------------------------------------------------------------
-#- name: Start Tomcat using Java 21
- # shell: |
-  #  export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
- #   export PATH=$JAVA_HOME/bin:$PATH
-#    /home/{{ ansible_user }}/tomcat/bin/startup.sh
-- name: Start Tomcat
-  shell: "/home/{{ ansible_user }}/tomcat/bin/startup.sh"
+- name: Stop Tomcat
+  shell: "/home/{{ ansible_user }}/tomcat/bin/shutdown.sh"
+  ignore_errors: true
+
+# ------------------------------------------------------------
+# Start Tomcat
+# ------------------------------------------------------------
+- name: Start Tomcat (detached, no sudo)
+  shell: |
+    /bin/bash -l -c "nohup /home/wagih/tomcat/bin/startup.sh > /dev/null 2>&1 &"
+
+
+# ------------------------------------------------------------
+# Wait for Tomcat to start
+# ------------------------------------------------------------
+- name: Wait for Tomcat on port 9090
+  wait_for:
+    host: "127.0.0.1"
+    port: 9090
+    delay: 4
+    timeout: 40

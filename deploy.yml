@@ -2,51 +2,93 @@
   become: false
   gather_facts: false
 
+  vars:
+    PROJECT_ROOT: "/home/wagih/task2"
+    WAR_SOURCE: "/home/wagih/task2/builds/petclinic.war"
+    TOMCAT_HOME: "/home/{{ ansible_user }}/tomcat"
+    WEBAPPS: "{{ TOMCAT_HOME }}/webapps"
+    WAR_DEST: "{{ WEBAPPS }}/petclinic.war"
+
   tasks:
 
-    # ------------------------------------
-    # Copy ServletInitializer template
-    # ------------------------------------
+    # ---------------------------------------------------------
+    # 1) Copy ServletInitializer template
+    # ---------------------------------------------------------
     - name: Copy ServletInitializer template
       copy:
         src: templates/ServletInitializer.java
-        dest: /home/wagih/templates/ServletInitializer.java
+        dest: "/home/{{ ansible_user }}/templates/ServletInitializer.java"
         mode: '0644'
 
-    # ------------------------------------
-    # Build PetClinic WAR
-    # ------------------------------------
+    # ---------------------------------------------------------
+    # 2) Build PetClinic WAR
+    # ---------------------------------------------------------
     - name: Build PetClinic WAR
-      script: scripts/build_petclinic.sh
+      shell: "/bin/bash scripts/build_petclinic.sh"
       args:
-        chdir: /home/wagih/task2
-        executable: /bin/bash
+        chdir: "{{ PROJECT_ROOT }}"
       environment:
-        JAVA_HOME: "/home/wagih/java/jdk-25.0.1"
-        PATH: "/home/wagih/java/jdk-25.0.1/bin:{{ ansible_env.PATH }}"
+        JAVA_HOME: "/home/{{ ansible_user }}/java/jdk-25.0.1"
+        PATH: "/home/{{ ansible_user }}/java/jdk-25.0.1/bin:{{ ansible_env.PATH }}"
 
-    # ------------------------------------
-    # Deploy WAR to Tomcat (portable mode)
-    # ------------------------------------
-    - name: Deploy WAR to Tomcat
-      copy:
-        src: "/home/{{ ansible_user }}/.ansible/tmp/builds/petclinic.war"
-        dest: "/home/{{ ansible_user }}/tomcat/webapps/petclinic.war"
-        mode: "0644"
-        remote_src: true
+    # ---------------------------------------------------------
+    # 3) Stop Tomcat before deploying new WAR
+    # ---------------------------------------------------------
+    - name: Stop Tomcat
+      shell: |
+        {{ TOMCAT_HOME }}/bin/shutdown.sh || true
+        pkill -f '{{ TOMCAT_HOME }}' || true
+      ignore_errors: true
 
-    - name: Pause for Tomcat to deploy
+    - name: Wait for shutdown
       pause:
-        seconds: 10
+        seconds: 3
 
-    # ------------------------------------
-    # Sanity Check
-    # ------------------------------------
-    - name: Sanity Check PetClinic
+    # ---------------------------------------------------------
+    # 4) Clean old deployment
+    # ---------------------------------------------------------
+    - name: Remove old exploded application
+      file:
+        path: "{{ WEBAPPS }}/petclinic"
+        state: absent
+
+    - name: Remove old WAR file
+      file:
+        path: "{{ WAR_DEST }}"
+        state: absent
+
+    # ---------------------------------------------------------
+    # 5) Copy new WAR
+    # ---------------------------------------------------------
+    - name: Copy new WAR
+      copy:
+        src: "{{ WAR_SOURCE }}"
+        dest: "{{ WAR_DEST }}"
+        mode: "0644"
+
+    # ---------------------------------------------------------
+    # 6) Start Tomcat (DETACHED MODE — CRITICAL)
+    # ---------------------------------------------------------
+    - name: Start Tomcat (detached, using Java 25 from setenv.sh)
+      shell: |
+        /bin/bash -l -c "nohup {{ TOMCAT_HOME }}/bin/startup.sh >/dev/null 2>&1 &"
+
+    - name: Wait for Tomcat to initialize
+      pause:
+        seconds: 6
+
+    # ---------------------------------------------------------
+    # 7) Sanity Check
+    # ---------------------------------------------------------
+    - name: Wait until PetClinic responds
       uri:
         url: "http://127.0.0.1:9090/petclinic/"
+        status_code: 200
         return_content: yes
       register: sanity
+      retries: 20
+      delay: 5
+      until: sanity.status == 200
 
     - debug:
         var: sanity.status
