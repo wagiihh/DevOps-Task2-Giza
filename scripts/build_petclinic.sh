@@ -11,7 +11,7 @@ JDK_URL="https://download.oracle.com/java/25/latest/$JDK_TAR"
 mkdir -p "$JDK_DIR"
 
 # -----------------------------------------------------
-# Install JDK 25 ONLY ONCE (your original logic kept)
+# Install JDK 25 ONLY ONCE
 # -----------------------------------------------------
 if [ ! -d "$JDK_DIR/jdk-$JDK_VERSION" ]; then
   echo "[INFO] Downloading JDK 25..."
@@ -31,11 +31,8 @@ java -version
 
 
 # ========================================================================
-# FIXED: Correct folder structure (NO MORE .ansible/tmp ISSUE)
+# FIXED: Correct folder structure
 # ========================================================================
-# Ansible will run this script with:
-#   chdir: /home/wagih/task2
-# So we MUST use $PWD, otherwise BASH_SOURCE points to ~/.ansible/tmp
 ROOT_DIR="/home/wagih/task2"
 SRC_ROOT="$ROOT_DIR/src"
 SRC_DIR="$SRC_ROOT/spring-petclinic"
@@ -50,22 +47,27 @@ mkdir -p "$SRC_ROOT" "$BUILD_DIR"
 
 
 # ========================================================================
-# Clone OR update PetClinic repository (your logic preserved)
+# *** THE CRITICAL FIX ***
+# Clean old source directory before cloning
 # ========================================================================
-if [ ! -d "$SRC_DIR/.git" ]; then
-  echo "[INFO] Cloning spring-petclinic..."
-  git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git "$SRC_DIR"
-else
-  echo "[INFO] Updating spring-petclinic..."
-  git -C "$SRC_DIR" fetch --depth 1 origin main
-  git -C "$SRC_DIR" reset --hard origin/main
+echo "[INFO] Cleaning old source directory if exists..."
+if [ -d "$SRC_DIR" ]; then
+    echo "[INFO] Removing $SRC_DIR"
+    rm -rf "$SRC_DIR"
 fi
+
+
+# ========================================================================
+# Clone fresh PetClinic repository
+# ========================================================================
+echo "[INFO] Cloning spring-petclinic..."
+git clone --depth 1 https://github.com/spring-projects/spring-petclinic.git "$SRC_DIR"
 
 cd "$SRC_DIR"
 
 
 # ========================================================================
-# Force WAR packaging + Remove broken plugins (your logic)
+# Force WAR packaging + Remove broken plugins
 # ========================================================================
 echo "[INFO] Forcing WAR packaging and cleaning POM..."
 
@@ -85,7 +87,7 @@ if pack is None:
     pack = ET.SubElement(root, "{http://maven.apache.org/POM/4.0.0}packaging")
 pack.text = "war"
 
-# Remove spring-javaformat plugin which breaks WAR build
+# Remove spring-javaformat plugin
 build = root.find("m:build", ns)
 if build is None:
     build = ET.SubElement(root, "{http://maven.apache.org/POM/4.0.0}build")
@@ -106,7 +108,7 @@ PY
 
 
 # ========================================================================
-# Copy Your ServletInitializer (correct package path)
+# Copy ServletInitializer.java
 # ========================================================================
 echo "[INFO] Adding ServletInitializer.java..."
 
@@ -126,11 +128,12 @@ JAVA_HOME="$JAVA_HOME" ./mvnw clean package -DskipTests
 
 
 # ========================================================================
-# Copy WAR to builds directory (THIS is what deploy.yml needs)
+# Copy WAR → builds directory
 # ========================================================================
 echo "[INFO] Copying WAR → $BUILD_DIR/$WAR_NAME"
 
 cp target/*.war "$BUILD_DIR/$WAR_NAME"
+
 
 echo "[INFO] ========================================="
 echo "[INFO]  WAR READY: $BUILD_DIR/$WAR_NAME"
