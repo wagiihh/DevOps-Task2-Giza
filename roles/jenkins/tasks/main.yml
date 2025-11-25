@@ -1,35 +1,48 @@
-# Create Jenkins directory with root permissions
-- name: Create Jenkins directory
-  become: true
+---
+# =====================================================
+# PORTABLE JENKINS INSTALLATION (NO ROOT, NO APT)
+# =====================================================
+
+# -----------------------------------------------------
+# Create Jenkins directory inside user home
+# -----------------------------------------------------
+- name: Create Jenkins home directory
   file:
-    path: /opt/jenkins
+    path: "/home/{{ ansible_user }}/jenkins"
     state: directory
-    mode: '0755'
+    mode: "0755"
 
-# Download Jenkins WAR using Ansible (not script)
-- name: Download Jenkins WAR
-  become: true
+# -----------------------------------------------------
+# Download LATEST Jenkins WAR (for plugin compatibility)
+# -----------------------------------------------------
+- name: Download Jenkins WAR (portable LTS)
   get_url:
-    url: https://get.jenkins.io/war-stable/2.452.2/jenkins.war
-    dest: /opt/jenkins/jenkins.war
-    mode: '0755'
+    url: "https://get.jenkins.io/war-stable/2.462.3/jenkins.war"
+    dest: "/home/{{ ansible_user }}/jenkins/jenkins.war"
+    mode: "0755"
 
-# Install Jenkins systemd service
-- name: Install Jenkins service file
-  become: true
-  template:
-    src: jenkins.service.j2
-    dest: /etc/systemd/system/jenkins.service
+# -----------------------------------------------------
+# Create Jenkins run script
+# -----------------------------------------------------
+- name: Create Jenkins run script
+  copy:
+    dest: "/home/{{ ansible_user }}/jenkins/run_jenkins.sh"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-arm64
+      export PATH=$JAVA_HOME/bin:$PATH
 
-# Reload systemd
-- name: Reload systemd
-  become: true
-  command: systemctl daemon-reload
 
-# Enable/start Jenkins
-- name: Start Jenkins
-  become: true
-  systemd:
-    name: jenkins
-    enabled: yes
-    state: started
+      echo "[INFO] Starting Jenkins on port 8081..."
+      nohup java -jar /home/{{ ansible_user }}/jenkins/jenkins.war \
+        --httpPort=8081 \
+        > /home/{{ ansible_user }}/jenkins/jenkins.log 2>&1 &
+
+      echo "[INFO] Jenkins started. Logs here: /home/{{ ansible_user }}/jenkins/jenkins.log"
+
+# -----------------------------------------------------
+# Start Jenkins (NO ROOT, NO SYSTEMD)
+# -----------------------------------------------------
+- name: Start Jenkins in background
+  shell: "/home/{{ ansible_user }}/jenkins/run_jenkins.sh"
