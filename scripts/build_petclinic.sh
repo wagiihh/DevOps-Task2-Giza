@@ -33,7 +33,7 @@ java -version
 # ========================================================================
 # FIXED: Correct folder structure
 # ========================================================================
-ROOT_DIR="/home/wagih/task2"
+ROOT_DIR="/home/$ANSIBLE_USER/task2"
 SRC_ROOT="$ROOT_DIR/src"
 SRC_DIR="$SRC_ROOT/spring-petclinic"
 BUILD_DIR="$ROOT_DIR/builds"
@@ -115,7 +115,7 @@ echo "[INFO] Adding ServletInitializer.java..."
 TARGET_JAVA_DIR="$SRC_DIR/src/main/java/org/springframework/samples/petclinic"
 mkdir -p "$TARGET_JAVA_DIR"
 
-cp -f "$HOME/templates/ServletInitializer.java" "$TARGET_JAVA_DIR/ServletInitializer.java"
+cp -f "$ROOT_DIR/templates/ServletInitializer.java" "$TARGET_JAVA_DIR/ServletInitializer.java"
 
 
 # ========================================================================

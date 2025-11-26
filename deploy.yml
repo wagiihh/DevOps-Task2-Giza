@@ -3,8 +3,8 @@
   gather_facts: false
 
   vars:
-    PROJECT_ROOT: "/home/wagih/task2"
-    WAR_SOURCE: "/home/wagih/task2/builds/petclinic.war"
+    PROJECT_ROOT: "/home/{{ ansible_user }}/task2"
+    WAR_SOURCE: "/home/{{ ansible_user }}/task2/builds/petclinic.war"
     TOMCAT_HOME: "/home/{{ ansible_user }}/tomcat"
     WEBAPPS: "{{ TOMCAT_HOME }}/webapps"
     WAR_DEST: "{{ WEBAPPS }}/petclinic.war"
@@ -14,11 +14,11 @@
     # ---------------------------------------------------------
     # 1) Copy ServletInitializer template
     # ---------------------------------------------------------
-    - name: Copy ServletInitializer template
-      copy:
-        src: templates/ServletInitializer.java
-        dest: "/home/{{ ansible_user }}/templates/ServletInitializer.java"
-        mode: '0644'
+   # - name: Copy ServletInitializer template
+    #  copy:
+     #   src: templates/ServletInitializer.java
+      #  dest: "/home/{{ ansible_user }}/templates/ServletInitializer.java"
+       # mode: '0644'
 
     # ---------------------------------------------------------
     # 2) Build PetClinic WAR
@@ -30,6 +30,7 @@
       environment:
         JAVA_HOME: "/home/{{ ansible_user }}/java/jdk-25.0.1"
         PATH: "/home/{{ ansible_user }}/java/jdk-25.0.1/bin:{{ ansible_env.PATH }}"
+        ANSIBLE_USER: "{{ ansible_user }}"
 
     # ---------------------------------------------------------
     # 3) Stop Tomcat before deploying new WAR
@@ -67,7 +68,7 @@
         mode: "0644"
 
     # ---------------------------------------------------------
-    # 6) Start Tomcat (DETACHED MODE — CRITICAL)
+    # 6) Start Tomcat (DETACHED MODE)
     # ---------------------------------------------------------
     - name: Start Tomcat (detached, using Java 25 from setenv.sh)
       shell: |

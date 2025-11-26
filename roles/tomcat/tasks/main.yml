@@ -106,7 +106,7 @@
 # ------------------------------------------------------------
 - name: Start Tomcat (detached, no sudo)
   shell: |
-    /bin/bash -l -c "nohup /home/wagih/tomcat/bin/startup.sh > /dev/null 2>&1 &"
+    /bin/bash -l -c "nohup /home/{{ ansible_user }}/tomcat/bin/startup.sh > /dev/null 2>&1 &"
 
 
 # ------------------------------------------------------------
