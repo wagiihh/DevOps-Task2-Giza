@@ -1,61 +1,262 @@
-- name: Create Nagios directory
+---
+# ========================================
+#   NAGIOS CORE-ONLY USER-MODE INSTALL
+#   FINAL CLEAN VERSION (ONLY CUSTOM CHECKS)
+# ========================================
+
+- name: Set Nagios home directory
+  set_fact:
+    nagios_home: "/home/{{ ansible_user }}/nagios"
+
+- name: Ensure Nagios base directory exists
   file:
-    path: /home/{{ ansible_user }}/nagios
+    path: "{{ nagios_home }}"
     state: directory
+    mode: "0755"
 
-- name: Download Nagios portable tarball
-  get_url:
-    url: "https://assets.nagios.com/downloads/nagioscore/releases/nagios-4.4.6.tar.gz"
-    dest: /home/{{ ansible_user }}/nagios/nagios.tar.gz
-
-- name: Extract Nagios
-  unarchive:
-    src: /home/{{ ansible_user }}/nagios/nagios.tar.gz
-    dest: /home/{{ ansible_user }}/nagios
-    remote_src: yes
-
-- name: Standardize Nagios folder name
-  command: mv /home/{{ ansible_user }}/nagios/nagios-4.4.6 /home/{{ ansible_user }}/nagios/core
-  args:
-    creates: /home/{{ ansible_user }}/nagios/core
-
-
-# ============================
-# 🔥 FIX ADDED HERE
-# ============================
-- name: Wait 12 seconds for Tomcat before Nagios checks
-  pause:
-    seconds: 12
-
-
-# ============================
-# Tomcat Port Check Script
-# ============================
-- name: Create Tomcat check script
+# ----------------------------------------
+# Upload core-only Nagios build script
+# ----------------------------------------
+- name: Upload Core-only Nagios build script
   copy:
-    dest: /home/{{ ansible_user }}/nagios/check_tomcat.sh
-    mode: '0755'
+    src: "/home/{{ ansible_user }}/task2/roles/nagios/files/build_nagios.sh"
+    dest: "{{ nagios_home }}/build_nagios.sh"
+    mode: "0755"
+
+# ----------------------------------------
+# Build Nagios Core (NO plugins)
+# ----------------------------------------
+- name: Build Nagios Core (NO plugins)
+  shell: "/bin/bash {{ nagios_home }}/build_nagios.sh"
+  args:
+    chdir: "{{ nagios_home }}"
+
+# ========================================
+# FIX PERMISSIONS, LOCK FILE, USER/GROUP
+# ========================================
+
+- name: Ensure Nagios var directory exists
+  file:
+    path: "{{ nagios_home }}/var"
+    state: directory
+    mode: "0755"
+
+- name: Ensure lock file exists
+  file:
+    path: "{{ nagios_home }}/var/nagios.lock"
+    state: touch
+    mode: "0664"
+
+- name: Patch lock_file in nagios.cfg
+  replace:
+    path: "{{ nagios_home }}/etc/nagios.cfg"
+    regexp: '^lock_file=.*'
+    replace: "lock_file={{ nagios_home }}/var/nagios.lock"
+
+- name: Fix nagios_user
+  replace:
+    path: "{{ nagios_home }}/etc/nagios.cfg"
+    regexp: '^nagios_user=.*'
+    replace: "nagios_user={{ ansible_user }}"
+
+- name: Fix nagios_group
+  replace:
+    path: "{{ nagios_home }}/etc/nagios.cfg"
+    regexp: '^nagios_group=.*'
+    replace: "nagios_group={{ ansible_user }}"
+
+# ========================================
+#  FIX QUERY HANDLER (qh) SOCKET DIRECTORY
+# ========================================
+
+- name: Ensure qh socket directory exists
+  file:
+    path: "{{ nagios_home }}/var/rw"
+    state: directory
+    mode: "0775"
+
+
+# ========================================
+#  ENABLE CUSTOM SERVICE CHECKS
+#  DISABLE HOST CHECKS
+# ========================================
+
+- name: Enable service checks
+  replace:
+    path: "{{ nagios_home }}/etc/nagios.cfg"
+    regexp: '^execute_service_checks=.*'
+    replace: 'execute_service_checks=1'
+
+- name: Disable host checks
+  replace:
+    path: "{{ nagios_home }}/etc/nagios.cfg"
+    regexp: '^execute_host_checks=.*'
+    replace: 'execute_host_checks=0'
+
+
+# ========================================
+# REMOVE ALL DEFAULT SERVICES & COMMANDS
+# ========================================
+
+- name: Remove all default service definitions (sample-config)
+  shell: |
+    sed -i '/define service{/,/}/d' {{ nagios_home }}/etc/objects/localhost.cfg
+
+- name: Remove default command definitions (sample-config)
+  shell: |
+    sed -i '/define command{/,/}/d' {{ nagios_home }}/etc/objects/commands.cfg
+
+- name: Clean libexec completely (remove plugin placeholders)
+  shell: |
+    rm -f {{ nagios_home }}/libexec/*
+
+
+# ========================================
+#        CUSTOM CHECK SCRIPTS
+# ========================================
+
+- name: Ensure servers directory exists
+  file:
+    path: "{{ nagios_home }}/etc/servers"
+    state: directory
+    mode: "0755"
+
+# ---- check_process ----
+- name: Install check_process
+  copy:
+    dest: "{{ nagios_home }}/libexec/check_process"
+    mode: "0755"
     content: |
       #!/bin/bash
-      PORT=9090
-      timeout 2 bash -c "echo > /dev/tcp/127.0.0.1/$PORT" 2>/dev/null
-      if [ $? -eq 0 ]; then
-          echo "OK - Tomcat running on port $PORT"
-          exit 0
+      PROC="$1"
+      if pgrep -f "$PROC" >/dev/null 2>&1; then
+        echo "OK - Process '$PROC' is running"
+        exit 0
       else
-          echo "CRITICAL - Tomcat is NOT running!"
-          exit 2
+        echo "CRITICAL - Process '$PROC' is NOT running"
+        exit 2
       fi
 
-- name: Create Nagios run script
+# ---- check_port ----
+- name: Install check_port
   copy:
-    dest: /home/{{ ansible_user }}/nagios/run_nagios.sh
-    mode: '0755'
+    dest: "{{ nagios_home }}/libexec/check_port"
+    mode: "0755"
     content: |
       #!/bin/bash
-      echo "===== Nagios Check Runner ====="
-      echo "Running Tomcat Monitoring Check..."
-      /home/{{ ansible_user }}/nagios/check_tomcat.sh
+      HOST=${1:-127.0.0.1}
+      PORT="$2"
+      if timeout 2 bash -c "</dev/tcp/$HOST/$PORT" 2>/dev/null; then
+        echo "OK - Port $PORT open on $HOST"
+        exit 0
+      else
+        echo "CRITICAL - Port $PORT closed on $HOST"
+        exit 2
+      fi
 
-- name: Execute Nagios run script (Portable Mode)
-  command: /home/{{ ansible_user }}/nagios/run_nagios.sh
+# ---- check_http_custom ----
+- name: Install check_http_custom
+  copy:
+    dest: "{{ nagios_home }}/libexec/check_http_custom"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      URL="$1"
+      CODE=$(curl -s -o /dev/null -w "%{http_code}" "$URL")
+      if [ "$CODE" = "200" ]; then
+        echo "OK - HTTP 200 for $URL"
+        exit 0
+      else
+        echo "CRITICAL - HTTP status $CODE for $URL"
+        exit 2
+      fi
+
+
+# ========================================
+#  REGISTER CUSTOM CHECK COMMANDS ONLY
+# ========================================
+
+- name: Register custom check commands
+  blockinfile:
+    path: "{{ nagios_home }}/etc/objects/commands.cfg"
+    block: |
+      define command{
+        command_name    check_process
+        command_line    {{ nagios_home }}/libexec/check_process $ARG1$
+      }
+
+      define command{
+        command_name    check_port
+        command_line    {{ nagios_home }}/libexec/check_port $ARG1$ $ARG2$
+      }
+
+      define command{
+        command_name    check_http_custom
+        command_line    {{ nagios_home }}/libexec/check_http_custom $ARG1$
+      }
+
+
+# ========================================
+#     DEFINE CUSTOM SERVICES ONLY
+# ========================================
+
+- name: Add service definitions for custom checks
+  blockinfile:
+    path: "{{ nagios_home }}/etc/servers/custom_checks.cfg"
+    create: true
+    block: |
+      define service{
+        use                     local-service
+        host_name               localhost
+        service_description     Check_Process_java
+        check_command           check_process!java
+      }
+
+      define service{
+        use                     local-service
+        host_name               localhost
+        service_description     Port_9090_Check
+        check_command           check_port!127.0.0.1!9090
+      }
+
+      define service{
+        use                     local-service
+        host_name               localhost
+        service_description     HTTP_Check_Tomcat_UI
+        check_command           check_http_custom!http://127.0.0.1:9090/
+      }
+
+      define service{
+        use                     local-service
+        host_name               localhost
+        service_description     HTTP_Check_PetClinic
+        check_command           check_http_custom!http://127.0.0.1:9090/petclinic/
+      }
+
+
+# ========================================
+#        START NAGIOS ENGINE
+# ========================================
+
+- name: Create Nagios start script
+  copy:
+    dest: "{{ nagios_home }}/start_nagios.sh"
+    mode: "0755"
+    content: |
+      #!/bin/bash
+      NAGIOS_HOME="{{ nagios_home }}"
+      echo "Starting Nagios Core Engine..."
+      "$NAGIOS_HOME/bin/nagios" -d "$NAGIOS_HOME/etc/nagios.cfg"
+      echo "Nagios Core running. Log at: $NAGIOS_HOME/var/nagios.log"
+
+- name: Start Nagios Core
+  shell: "/bin/bash {{ nagios_home }}/start_nagios.sh"
+
+
+# ========================================
+#             DONE
+# ========================================
+
+- name: Completed message
+  debug:
+    msg: "Nagios Core (Tomcat + PetClinic monitoring only) installed and running with automatic service checks."
