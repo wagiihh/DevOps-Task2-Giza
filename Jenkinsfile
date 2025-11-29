@@ -5,6 +5,8 @@ pipeline {
         // Dynamic user home directory (NO hardcoding)
         USER_HOME       = "/home/${env.USER}"
 
+	ANSIBLE_USER= "${env.USER}"
+
         // Java 25 user-mode installation
         JAVA_HOME       = "${USER_HOME}/java/jdk-25.0.1"
         PATH            = "${JAVA_HOME}/bin:${env.PATH}"
