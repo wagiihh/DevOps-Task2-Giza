@@ -51,7 +51,7 @@ pipeline {
 
                     for (int i = 0; i < retries; i++) {
                         def code = sh(
-                            script: "curl -s -o /dev/null -w \"%{http_code}\" ${APP_URL}",
+                            script: "curl -L -s -o /dev/null -w \"%{http_code}\" ${APP_URL}",
                             returnStdout: true
                         ).trim()
 
