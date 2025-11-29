@@ -25,7 +25,9 @@ pipeline {
 
     stages {
 
-        // Clean workspace
+        // ==========================
+        // 1) CLEAN WORKSPACE
+        // ==========================
         stage('Clean Workspace') {
             steps {
                 echo "=== Cleaning Jenkins workspace ==="
@@ -33,7 +35,9 @@ pipeline {
             }
         }
 
-        // Clone repository
+        // ==========================
+        // 2) CLONE REPO
+        // ==========================
         stage('Checkout Repo') {
             steps {
                 echo "=== Checking out code ==="
@@ -41,39 +45,47 @@ pipeline {
             }
         }
 
-        // Build WAR using your build_petclinic.sh script
+        // ==========================
+        // 3) BUILD WAR
+        // ==========================
         stage('Build WAR') {
             steps {
-                echo "=== Building PetClinic WAR using Java 25 ==="
+                echo "=== Building PetClinic WAR ==="
                 sh "bash ${BUILD_SCRIPT}"
             }
         }
 
-        // Deploy WAR to portable Tomcat
+        // ==========================
+        // 4) DEPLOY TO TOMCAT (FIXED)
+        // ==========================
         stage('Deploy to Tomcat') {
             steps {
                 echo "=== Deploying WAR to Tomcat ==="
 
-                // Stop Tomcat safely
-                sh "bash -lc '${TOMCAT_HOME}/bin/shutdown.sh || true'"
+                // ---- KILL ANY EXISTING TOMCAT INSTANCE ----
+                echo "Stopping any running Tomcat process..."
+                sh "pkill -f 'tomcat' || true"
+                sleep 2
 
-                // Remove old deployment
+                // ---- CLEAN OLD DEPLOYMENT ----
                 sh "rm -rf ${TOMCAT_WEBAPPS}/petclinic ${TOMCAT_WEBAPPS}/petclinic.war"
 
-                // Copy new WAR
+                // ---- COPY NEW WAR ----
                 sh "cp ${BUILD_DIR}/${WAR_NAME} ${TOMCAT_WEBAPPS}/petclinic.war"
 
-                // Start Tomcat
+                // ---- START TOMCAT ----
                 sh "bash -lc '${TOMCAT_HOME}/bin/startup.sh'"
             }
         }
 
-        // Health Check (FIXED: follow redirects with -L)
+        // ==========================
+        // 5) HEALTH CHECK (FIXED: -L)
+        // ==========================
         stage('Health Check') {
             steps {
                 echo "=== Checking PetClinic Health ==="
                 script {
-                    def retries = 10
+                    def retries = 12
                     def success = false
 
                     for (int i = 0; i < retries; i++) {
@@ -85,7 +97,6 @@ pipeline {
 
                         echo "HTTP Response: ${code}"
 
-                        // PetClinic is healthy when HTTP 200 OK
                         if (code == "200") {
                             echo "PetClinic is UP!"
                             success = true
@@ -104,7 +115,9 @@ pipeline {
         }
     }
 
-    // Final status
+    // ==========================
+    // FINAL STATUS
+    // ==========================
     post {
         success {
             echo "🎉 SUCCESS: PetClinic deployed successfully!"
