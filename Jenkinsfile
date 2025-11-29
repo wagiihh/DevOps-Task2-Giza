@@ -2,129 +2,112 @@ pipeline {
     agent any
 
     environment {
-        // Dynamic user home directory
-        USER_HOME       = "/home/${env.USER}"
-        ANSIBLE_USER    = "${env.USER}"
+        USER_HOME    = "/home/${env.USER}"
 
-        // Java 25 user-mode installation
-        JAVA_HOME       = "${USER_HOME}/java/jdk-25.0.1"
-        PATH            = "${JAVA_HOME}/bin:${env.PATH}"
+        // Java 25 user-mode
+        JAVA_HOME    = "${USER_HOME}/java/jdk-25.0.1"
+        PATH         = "${JAVA_HOME}/bin:${env.PATH}"
 
-        // Build script + WAR paths
-        BUILD_SCRIPT    = "${WORKSPACE}/scripts/build_petclinic.sh"
-        BUILD_DIR       = "${USER_HOME}/task2/builds"
-        WAR_NAME        = "petclinic.war"
+        // Build script + build output
+        BUILD_SCRIPT = "${WORKSPACE}/scripts/build_petclinic.sh"
+        BUILD_DIR    = "${USER_HOME}/task2/builds"
+        WAR_NAME     = "petclinic.war"
 
-        // Tomcat portable installation
-        TOMCAT_HOME     = "${USER_HOME}/tomcat"
-        TOMCAT_WEBAPPS  = "${USER_HOME}/tomcat/webapps"
+        // Tomcat portable
+        TOMCAT_HOME    = "${USER_HOME}/tomcat"
+        TOMCAT_WEBAPPS = "${USER_HOME}/tomcat/webapps"
 
-        // Correct URL (with trailing slash)
-        APP_URL         = "http://127.0.0.1:9090/petclinic/"
+        // URL for health check
+        APP_URL = "http://127.0.0.1:9090/petclinic/"
     }
 
     stages {
 
-        // ==========================
-        // 1) CLEAN WORKSPACE
-        // ==========================
         stage('Clean Workspace') {
             steps {
-                echo "=== Cleaning Jenkins workspace ==="
+                echo "=== Cleaning old Jenkins workspace ==="
                 cleanWs()
             }
         }
 
-        // ==========================
-        // 2) CLONE REPO
-        // ==========================
         stage('Checkout Repo') {
             steps {
-                echo "=== Checking out code ==="
+                echo "=== Checking out source code ==="
                 checkout scm
             }
         }
 
-        // ==========================
-        // 3) BUILD WAR
-        // ==========================
         stage('Build WAR') {
             steps {
-                echo "=== Building PetClinic WAR ==="
+                echo "=== Running build script (Maven + Java 25) ==="
                 sh "bash ${BUILD_SCRIPT}"
+
+                echo "=== Waiting for WAR to finish writing ==="
+                sh """
+                while [ ! -s ${BUILD_DIR}/${WAR_NAME} ]; do
+                    echo 'WAR not ready yet...'
+                    sleep 1
+                done
+                """
+                sleep 2 // filesystem flush
             }
         }
 
-        // ==========================
-        // 4) DEPLOY TO TOMCAT (FIXED)
-        // ==========================
         stage('Deploy to Tomcat') {
             steps {
-                echo "=== Deploying WAR to Tomcat ==="
-
-                // ---- KILL ANY EXISTING TOMCAT INSTANCE ----
-                echo "Stopping any running Tomcat process..."
+                echo "=== Stopping existing Tomcat ==="
                 sh "pkill -f 'tomcat' || true"
                 sleep 2
 
-                // ---- CLEAN OLD DEPLOYMENT ----
+                echo "=== Cleaning old deployment ==="
                 sh "rm -rf ${TOMCAT_WEBAPPS}/petclinic ${TOMCAT_WEBAPPS}/petclinic.war"
 
-                // ---- COPY NEW WAR ----
+                echo "=== Copying new WAR ==="
                 sh "cp ${BUILD_DIR}/${WAR_NAME} ${TOMCAT_WEBAPPS}/petclinic.war"
 
-                // ---- START TOMCAT ----
+                echo "=== Starting Tomcat ==="
                 sh "bash -lc '${TOMCAT_HOME}/bin/startup.sh'"
+                sleep 3
             }
         }
 
-        // ==========================
-        // 5) HEALTH CHECK (FIXED: -L)
-        // ==========================
         stage('Health Check') {
             steps {
-                echo "=== Checking PetClinic Health ==="
                 script {
-                    def retries = 12
+                    echo "=== Checking application health ==="
+                    def retries = 15
                     def success = false
 
                     for (int i = 0; i < retries; i++) {
-
                         def code = sh(
-                            script: "curl -L -s -o /dev/null -w \"%{http_code}\" ${APP_URL}",
+                            script: "curl -s -o /dev/null -w \"%{http_code}\" ${APP_URL}",
                             returnStdout: true
                         ).trim()
 
-                        echo "HTTP Response: ${code}"
+                        echo "Response: ${code}"
 
                         if (code == "200") {
-                            echo "PetClinic is UP!"
                             success = true
                             break
                         }
 
-                        echo "PetClinic not ready yet. Retrying..."
-                        sleep 5
+                        sleep 4
                     }
 
                     if (!success) {
-                        error("PetClinic did NOT start after deployment.")
+                        error("❌ PetClinic is NOT responding.")
                     }
                 }
             }
         }
     }
 
-    // ==========================
-    // FINAL STATUS
-    // ==========================
     post {
         success {
-            echo "🎉 SUCCESS: PetClinic deployed successfully!"
-            echo "Open: http://127.0.0.1:9090/petclinic/"
+            echo "🎉 SUCCESS: PetClinic deployed and running at ${APP_URL}"
         }
         failure {
-            echo "❌ Pipeline FAILED — check logs."
+            echo "❌ FAILURE: Check logs and WAR build output."
         }
     }
 }
