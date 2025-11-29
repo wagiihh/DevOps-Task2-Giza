@@ -15,7 +15,7 @@ pipeline {
         TOMCAT_HOME     = "${USER_HOME}/tomcat"
         TOMCAT_WEBAPPS  = "${USER_HOME}/tomcat/webapps"
 
-        APP_URL         = "http://127.0.0.1:9090/petclinic"
+        APP_URL         = "http://127.0.0.1:9090/petclinic/"
     }
 
     stages {
