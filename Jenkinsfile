@@ -8,7 +8,10 @@ pipeline {
         JAVA_HOME    = "${USER_HOME}/java/jdk-25.0.1"
         PATH         = "${JAVA_HOME}/bin:${env.PATH}"
 
-        // Build script + build output
+        // Required for your build_petclinic.sh
+        ANSIBLE_USER = "${env.USER}"
+
+        // Build script and WAR details
         BUILD_SCRIPT = "${WORKSPACE}/scripts/build_petclinic.sh"
         BUILD_DIR    = "${USER_HOME}/task2/builds"
         WAR_NAME     = "petclinic.war"
@@ -40,16 +43,21 @@ pipeline {
         stage('Build WAR') {
             steps {
                 echo "=== Running build script (Maven + Java 25) ==="
-                sh "bash ${BUILD_SCRIPT}"
 
-                echo "=== Waiting for WAR to finish writing ==="
+                // FIX: Export ANSIBLE_USER before running the script
+                sh """
+                export ANSIBLE_USER=${env.USER}
+                bash ${BUILD_SCRIPT}
+                """
+
+                echo "=== Ensuring WAR is fully written ==="
                 sh """
                 while [ ! -s ${BUILD_DIR}/${WAR_NAME} ]; do
                     echo 'WAR not ready yet...'
                     sleep 1
                 done
                 """
-                sleep 2 // filesystem flush
+                sleep 2
             }
         }
 
@@ -74,7 +82,7 @@ pipeline {
         stage('Health Check') {
             steps {
                 script {
-                    echo "=== Checking application health ==="
+                    echo "=== Performing health check ==="
                     def retries = 15
                     def success = false
 
@@ -84,13 +92,12 @@ pipeline {
                             returnStdout: true
                         ).trim()
 
-                        echo "Response: ${code}"
+                        echo "HTTP Response: ${code}"
 
                         if (code == "200") {
                             success = true
                             break
                         }
-
                         sleep 4
                     }
 
@@ -104,7 +111,8 @@ pipeline {
 
     post {
         success {
-            echo "🎉 SUCCESS: PetClinic deployed and running at ${APP_URL}"
+            echo "🎉 SUCCESS: PetClinic deployed successfully!"
+            echo "Open: ${APP_URL}"
         }
         failure {
             echo "❌ FAILURE: Check logs and WAR build output."
