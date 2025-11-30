@@ -44,7 +44,7 @@ pipeline {
             steps {
                 echo "=== Running build script (Maven + Java 25) ==="
 
-                // FIX: Export ANSIBLE_USER before running the script
+                // Export ANSIBLE_USER for the build script
                 sh """
                 export ANSIBLE_USER=${env.USER}
                 bash ${BUILD_SCRIPT}
@@ -73,9 +73,13 @@ pipeline {
                 echo "=== Copying new WAR ==="
                 sh "cp ${BUILD_DIR}/${WAR_NAME} ${TOMCAT_WEBAPPS}/petclinic.war"
 
-                echo "=== Starting Tomcat ==="
-                sh "bash -lc '${TOMCAT_HOME}/bin/startup.sh'"
-                sleep 3
+                echo "=== Starting Tomcat in detached mode ==="
+                sh """
+                    nohup ${TOMCAT_HOME}/bin/startup.sh >/dev/null 2>&1 &
+                """
+
+                echo "=== Waiting for Tomcat to initialize ==="
+                sleep 4
             }
         }
 
