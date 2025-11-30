@@ -75,7 +75,7 @@ pipeline {
 
                 echo "=== Starting Tomcat in detached mode ==="
                 sh """
-                    nohup ${TOMCAT_HOME}/bin/startup.sh >/dev/null 2>&1 &
+                    nohup ${TOMCAT_HOME}/bin/startup.sh >/dev/null 2>&1 & disown
                 """
 
                 echo "=== Waiting for Tomcat to initialize ==="
