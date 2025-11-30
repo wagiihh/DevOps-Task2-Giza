@@ -23,14 +23,14 @@
     # ---------------------------------------------------------
     # 2) Build PetClinic WAR
     # ---------------------------------------------------------
-    - name: Build PetClinic WAR
-      shell: "/bin/bash scripts/build_petclinic.sh"
-      args:
-        chdir: "{{ PROJECT_ROOT }}"
-      environment:
-        JAVA_HOME: "/home/{{ ansible_user }}/java/jdk-25.0.1"
-        PATH: "/home/{{ ansible_user }}/java/jdk-25.0.1/bin:{{ ansible_env.PATH }}"
-        ANSIBLE_USER: "{{ ansible_user }}"
+#    - name: Build PetClinic WAR
+ #     shell: "/bin/bash scripts/build_petclinic.sh"
+  #    args:
+   #     chdir: "{{ PROJECT_ROOT }}"
+    #  environment:
+     #   JAVA_HOME: "/home/{{ ansible_user }}/java/jdk-25.0.1"
+      #  PATH: "/home/{{ ansible_user }}/java/jdk-25.0.1/bin:{{ ansible_env.PATH }}"
+       # ANSIBLE_USER: "{{ ansible_user }}"
 
     # ---------------------------------------------------------
     # 3) Stop Tomcat before deploying new WAR

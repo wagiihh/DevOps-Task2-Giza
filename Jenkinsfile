@@ -2,104 +2,88 @@ pipeline {
     agent any
 
     environment {
-        USER_HOME    = "/home/${env.USER}"
+        USER_HOME = "/home/${env.USER}"
 
-        // Java 25 user-mode
-        JAVA_HOME    = "${USER_HOME}/java/jdk-25.0.1"
-        PATH         = "${JAVA_HOME}/bin:${env.PATH}"
-
-        // Required for your build_petclinic.sh
-        ANSIBLE_USER = "${env.USER}"
+        // Java 25 user-mode config (same as deploy.yml)
+        JAVA_HOME = "${USER_HOME}/java/jdk-25.0.1"
+        PATH = "${JAVA_HOME}/bin:${env.PATH}"
 
         // Build script and WAR details
+        PROJECT_ROOT = "${USER_HOME}/task2"
         BUILD_SCRIPT = "${WORKSPACE}/scripts/build_petclinic.sh"
-        BUILD_DIR    = "${USER_HOME}/task2/builds"
-        WAR_NAME     = "petclinic.war"
+        BUILD_DIR = "${USER_HOME}/task2/builds"
+        WAR_NAME = "petclinic.war"
 
-        // Tomcat portable
-        TOMCAT_HOME    = "${USER_HOME}/tomcat"
-        TOMCAT_WEBAPPS = "${USER_HOME}/tomcat/webapps"
-
-        // URL for health check
-        APP_URL = "http://127.0.0.1:9090/petclinic/"
+        // Ansible deploy files
+        INVENTORY = "${WORKSPACE}/inventory"
+        DEPLOY_PLAY = "${WORKSPACE}/deploy.yml"
     }
 
     stages {
 
         stage('Clean Workspace') {
             steps {
-                echo "=== Cleaning old Jenkins workspace ==="
                 cleanWs()
             }
         }
 
         stage('Checkout Repo') {
             steps {
-                echo "=== Checking out source code ==="
                 checkout scm
             }
         }
 
         stage('Build WAR') {
             steps {
-                echo "=== Running build script (Maven + Java 25) ==="
+                echo "=== Building PetClinic WAR with Java 25 ==="
 
-                // Export ANSIBLE_USER for build script
+                // EXACT equivalent of your Ansible block:
+                //   chdir: PROJECT_ROOT
+                //   environment:
+                //       JAVA_HOME
+                //       PATH
+                //       ANSIBLE_USER
                 sh """
-                export ANSIBLE_USER=${env.USER}
-                bash ${BUILD_SCRIPT}
+                    export JAVA_HOME=${JAVA_HOME}
+                    export PATH=${JAVA_HOME}/bin:${PATH}
+                    export ANSIBLE_USER=${env.USER}
+
+                    cd ${PROJECT_ROOT}
+                    bash ${BUILD_SCRIPT}
                 """
 
-                echo "=== Checking WAR exists ==="
+                // Verify WAR was built
                 sh """
-                while [ ! -s ${BUILD_DIR}/${WAR_NAME} ]; do
-                    echo 'WAR not ready yet...'
-                    sleep 1
-                done
+                    if [ ! -s ${BUILD_DIR}/${WAR_NAME} ]; then
+                        echo "ERROR: WAR file was NOT created!"
+                        exit 1
+                    fi
                 """
-                sleep 2
             }
         }
 
-        stage('Deploy to Tomcat') {
+        stage('Deploy Using Ansible') {
             steps {
-                echo "=== Stopping existing Tomcat ==="
-                sh "pkill -f 'tomcat' || true"
-                sleep 2
+                echo "=== Deploying via Ansible Playbook ==="
 
-                echo "=== Cleaning old deployment ==="
-                sh "rm -rf ${TOMCAT_WEBAPPS}/petclinic ${TOMCAT_WEBAPPS}/petclinic.war"
-
-                echo "=== Copying new WAR ==="
-                sh "cp ${BUILD_DIR}/${WAR_NAME} ${TOMCAT_WEBAPPS}/petclinic.war"
-
-                echo "=== Starting Tomcat in FULLY DETACHED Bash mode ==="
                 sh """
-                    bash -c '
-                        export JAVA_HOME=${JAVA_HOME}
-                        export PATH=${JAVA_HOME}/bin:${PATH}
-
-                        # Start Tomcat detached from Jenkins
-                        nohup ${TOMCAT_HOME}/bin/startup.sh >/dev/null 2>&1 &
-                        disown
-                    '
+                    ansible-playbook -i ${INVENTORY} ${DEPLOY_PLAY}
                 """
-
-                echo "=== Waiting for Tomcat to initialize ==="
-                sleep 5
             }
         }
 
-        stage('Health Check') {
+        stage('Post-Deployment Health Check') {
             steps {
                 script {
-                    echo "=== Performing health check ==="
-                    def retries = 15
+                    def url = "http://127.0.0.1:9090/petclinic/"
+                    def retries = 12
                     def success = false
+
+                    echo "=== Running health check ==="
 
                     for (int i = 0; i < retries; i++) {
                         def code = sh(
-                            script: "curl -s -o /dev/null -w \"%{http_code}\" ${APP_URL}",
+                            script: "curl -s -o /dev/null -w '%{http_code}' ${url}",
                             returnStdout: true
                         ).trim()
 
@@ -109,11 +93,12 @@ pipeline {
                             success = true
                             break
                         }
-                        sleep 4
+
+                        sleep 5
                     }
 
                     if (!success) {
-                        error("❌ PetClinic is NOT responding.")
+                        error("❌ PetClinic health check FAILED")
                     }
                 }
             }
@@ -122,11 +107,10 @@ pipeline {
 
     post {
         success {
-            echo "🎉 SUCCESS: PetClinic deployed successfully!"
-            echo "Open: ${APP_URL}"
+            echo "🎉 SUCCESS: PetClinic built + deployed successfully!"
         }
         failure {
-            echo "❌ FAILURE: Check logs and WAR build output."
+            echo "❌ FAILURE — check Jenkins + Ansible logs."
         }
     }
 }
