@@ -44,6 +44,7 @@ pipeline {
             steps {
                 echo "=== Running build script (Maven + Java 25) ==="
 
+                // Export ANSIBLE_USER for build script
                 sh """
                 export ANSIBLE_USER=${env.USER}
                 bash ${BUILD_SCRIPT}
@@ -72,17 +73,20 @@ pipeline {
                 echo "=== Copying new WAR ==="
                 sh "cp ${BUILD_DIR}/${WAR_NAME} ${TOMCAT_WEBAPPS}/petclinic.war"
 
-                echo "=== Starting Tomcat in detached mode ==="
+                echo "=== Starting Tomcat in FULLY DETACHED Bash mode ==="
                 sh """
-                    export JAVA_HOME=${JAVA_HOME}
-                    export PATH=${JAVA_HOME}/bin:${PATH}
+                    bash -c '
+                        export JAVA_HOME=${JAVA_HOME}
+                        export PATH=${JAVA_HOME}/bin:${PATH}
 
-                    # Start Tomcat AND detach from Jenkins completely
-                    nohup ${TOMCAT_HOME}/bin/startup.sh >/dev/null 2>&1 & disown
+                        # Start Tomcat detached from Jenkins
+                        nohup ${TOMCAT_HOME}/bin/startup.sh >/dev/null 2>&1 &
+                        disown
+                    '
                 """
 
-                echo "=== Waiting for Tomcat to become ready ==="
-                sleep 4
+                echo "=== Waiting for Tomcat to initialize ==="
+                sleep 5
             }
         }
 
