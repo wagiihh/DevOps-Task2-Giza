@@ -70,13 +70,13 @@
     # ---------------------------------------------------------
     # 6) Start Tomcat (DETACHED MODE)
     # ---------------------------------------------------------
-   # - name: Start Tomcat (detached, using Java 25 from setenv.sh)
-  #    shell: |
- #       /bin/bash -l -c "nohup {{ TOMCAT_HOME }}/bin/startup.sh >/dev/null 2>&1 &"
-#
-  #  - name: Wait for Tomcat to initialize
- #     pause:
-#        seconds: 6
+    - name: Start Tomcat (detached, using Java 25 from setenv.sh)
+      shell: |
+        /bin/bash -l -c "nohup {{ TOMCAT_HOME }}/bin/startup.sh >/dev/null 2>&1 &"
+
+    - name: Wait for Tomcat to initialize
+      pause:
+        seconds: 6
 
     # ---------------------------------------------------------
     # 7) Sanity Check
